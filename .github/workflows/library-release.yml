@@ -1,0 +1,54 @@
+name: Library release (reusable)
+
+# Réutilisable pour les libs Lamm publiées sur GitHub Packages (LammUI, etc.).
+# Vérifie que la version du pom == tag, puis `mvn deploy`.
+#
+# Caller minimal :
+#   on:
+#     push:
+#       tags: ['v*']
+#   jobs:
+#     publish:
+#       uses: Jeremy27/LammCI/.github/workflows/library-release.yml@main
+#       permissions:
+#         contents: read
+#         packages: write
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Version JDK Temurin'
+        type: string
+        default: '25'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          server-id: github
+          settings-path: ${{ github.workspace }}
+
+      - name: Verify pom version matches tag
+        run: |
+          POM_VERSION=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$POM_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version pom ($POM_VERSION) != tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Publish to GitHub Packages
+        run: mvn --batch-mode -s $GITHUB_WORKSPACE/settings.xml deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
